@@ -21,6 +21,7 @@ pub enum ServerMsg {
         y: u16,
         target_bits: u8,
         expires_at: u64,
+        value: u32,
     },
 
     /// Résultat d'un minage : un agent a résolu le challenge.
@@ -31,14 +32,14 @@ pub enum ServerMsg {
 
     /// Snapshot de l'état du jeu, envoyé à chaque tick.
     ///   - agents : (id, name, team, score, x, y)
-    ///   - resources : (id, x, y, expires_at)
+    ///   - resources : (id, x, y, expires_at, value)
     State {
         tick: u64,
         width: u16,
         height: u16,
         goal: u32,
         obstacles: Vec<(u16, u16)>,
-        resources: Vec<(Uuid, u16, u16, u64)>,
+        resources: Vec<(Uuid, u16, u16, u64, u32)>,
         agents: Vec<(Uuid, String, String, u32, u16, u16)>,
     },
 

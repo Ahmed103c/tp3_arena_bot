@@ -25,6 +25,7 @@ pub struct ResourceInfo {
     pub x: u16,
     pub y: u16,
     pub expires_at: u64,
+    pub value: u32,
 }
 
 /// Information sur un agent visible sur la carte.

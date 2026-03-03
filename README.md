@@ -48,19 +48,19 @@ Premier message reçu. Contient votre identifiant unique et l'intervalle entre l
   "width": 64, "height": 48,
   "goal": 10,
   "obstacles": [[5, 3], [10, 7]],
-  "resources": [["uuid", 12, 8, 72]],
+  "resources": [["uuid", 12, 8, 72, 3]],
   "agents": [["uuid", "nom", "equipe", 3, 15, 20]]
 }}
 ```
 Envoyé à chaque tick. Contient l'état complet du jeu :
-- `resources` : `[id, x, y, expires_at]`
+- `resources` : `[id, x, y, expires_at, value]`
 - `agents` : `[id, name, team, score, x, y]`
 
 #### `PowChallenge`
 ```json
 {"type": "PowChallenge", "data": {
   "tick": 40, "seed": "hex...", "resource_id": "uuid",
-  "x": 12, "y": 8, "target_bits": 20, "expires_at": 70
+  "x": 12, "y": 8, "target_bits": 20, "expires_at": 70, "value": 3
 }}
 ```
 Un nouveau challenge de minage est apparu. Trouver un `nonce` tel que :
