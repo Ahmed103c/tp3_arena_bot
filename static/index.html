@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARENA // SPECTATOR</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;800&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+
+  :root {
+    --bg: #07080a;
+    --surface: #0e1014;
+    --surface2: #14161c;
+    --border: #1e2028;
+    --text: #c8cad0;
+    --text-dim: #5a5e6a;
+    --accent: #f59e0b;
+    --accent-glow: #f59e0b44;
+    --resource: #34d399;
+    --resource-glow: #34d39944;
+    --obstacle: #1a1c24;
+    --grid-line: #12141a;
+    --danger: #ef4444;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent-glow);
+  }
+
+  .logo span { color: var(--text-dim); font-weight: 300; }
+
+  .header-stats {
+    display: flex;
+    gap: 28px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .header-stats .val {
+    color: var(--text);
+    font-weight: 500;
+    margin-left: 6px;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--danger);
+    margin-right: 6px;
+    vertical-align: middle;
+    transition: background 0.3s;
+  }
+
+  .status-dot.connected { background: var(--resource); box-shadow: 0 0 8px var(--resource-glow); }
+
+  /* ── Canvas area ── */
+  .canvas-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  canvas {
+    image-rendering: pixelated;
+    border-radius: 2px;
+  }
+
+  .canvas-scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* ── Sidebar ── */
+  aside {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  /* Scoreboard */
+  .team-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .team-row:last-child { border-bottom: none; }
+
+  .team-color {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .team-name {
+    font-size: 12px;
+    font-weight: 500;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .team-score {
+    font-family: 'Outfit', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--accent);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  .score-bar-wrap {
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 4px;
+  }
+
+  .score-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Agents list */
+  .agent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 11px;
+  }
+
+  .agent-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .agent-name { flex: 1; color: var(--text); }
+  .agent-pos { color: var(--text-dim); font-size: 10px; }
+  .agent-mining {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--resource);
+    color: var(--bg);
+    font-weight: 700;
+    animation: miningPulse 1s ease infinite;
+  }
+
+  @keyframes miningPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Event log */
+  .log-wrap {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .log-entries {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 18px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-entry {
+    font-size: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid #0c0d11;
+    color: var(--text-dim);
+    animation: logSlide 0.2s ease;
+  }
+
+  .log-entry .log-tag {
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  .log-tag.mine { color: var(--resource); }
+  .log-tag.pow { color: var(--accent); }
+  .log-tag.win { color: var(--danger); }
+  .log-tag.join { color: #818cf8; }
+
+  @keyframes logSlide {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Win overlay */
+  .win-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(7, 8, 10, 0.92);
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+
+  .win-overlay.show { display: flex; }
+
+  .win-box {
+    text-align: center;
+    animation: winPop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .win-label {
+    font-family: 'Outfit', sans-serif;
+    font-size: 12px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .win-team {
+    font-family: 'Outfit', sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 0 40px var(--accent-glow);
+  }
+
+  .win-dismiss {
+    margin-top: 24px;
+    padding: 10px 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--bg);
+    background: var(--accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .win-dismiss:hover { opacity: 0.85; }
+
+  .btn-reset {
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .btn-reset:hover { color: var(--danger); border-color: var(--danger); }
+
+  @keyframes winPop {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Connection overlay */
+  .connecting-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 200;
+    transition: opacity 0.5s;
+  }
+
+  .connecting-overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .connecting-text {
+    font-family: 'Outfit', sans-serif;
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    animation: pulse 1.5s ease infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="connecting-overlay" id="connectOverlay">
+  <div class="connecting-text">Connecting to Arena...</div>
+</div>
+
+<div class="win-overlay" id="winOverlay">
+  <div class="win-box">
+    <div class="win-label">Victory</div>
+    <div class="win-team" id="winTeam"></div>
+    <button class="win-dismiss" onclick="document.getElementById('winOverlay').classList.remove('show')">Dismiss</button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">ARENA <span>// SPECTATOR</span></div>
+    <div class="header-stats">
+      <div><span class="status-dot" id="statusDot"></span>STATUS<span class="val" id="statusText">offline</span></div>
+      <div>TICK<span class="val" id="tickVal">0</span></div>
+      <div>GOAL<span class="val" id="goalVal">—</span></div>
+      <div>MAP<span class="val" id="mapVal">—</span></div>
+      <button class="btn-reset" onclick="resetGame()">Reset</button>
+    </div>
+  </header>
+
+  <div class="canvas-wrap">
+    <canvas id="arena"></canvas>
+    <div class="canvas-scanlines"></div>
+  </div>
+
+  <aside>
+    <div class="panel" id="scorePanel">
+      <div class="panel-title">Scoreboard</div>
+      <div id="scoreList"><span style="font-size:11px;color:var(--text-dim)">Waiting for players...</span></div>
+    </div>
+
+    <div class="panel" id="agentPanel">
+      <div class="panel-title">Agents</div>
+      <div id="agentList"></div>
+    </div>
+
+    <div class="log-wrap">
+      <div class="panel" style="padding-bottom:8px;border-bottom:1px solid var(--border)">
+        <div class="panel-title" style="margin-bottom:0">Event Log</div>
+      </div>
+      <div class="log-entries" id="logEntries"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  connected: false,
+  tick: 0,
+  width: 64,
+  height: 48,
+  goal: 10,
+  obstacles: [],
+  resources: [],       // [id, x, y, expires_at]
+  agents: [],          // [id, name, team, score, x, y]
+  mining: new Map(),   // agent_id -> resource_id
+  prevAgentPos: {},    // agent_id -> {x, y}  for lerp
+  targetAgentPos: {},  // agent_id -> {x, y}
+  lerpT: 1,
+  teamColors: {},
+  particles: [],
+  knownResourceIds: new Set(),  // track known resources to detect new ones
+};
+
+const TEAM_PALETTE = [
+  '#f59e0b', '#818cf8', '#f472b6', '#34d399',
+  '#fb923c', '#38bdf8', '#a78bfa', '#fbbf24',
+];
+let colorIdx = 0;
+
+function teamColor(team) {
+  if (!state.teamColors[team]) {
+    state.teamColors[team] = TEAM_PALETTE[colorIdx++ % TEAM_PALETTE.length];
+  }
+  return state.teamColors[team];
+}
+
+// ─── Canvas Setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('arena');
+const ctx = canvas.getContext('2d');
+let CELL = 12;
+
+function resizeCanvas() {
+  const wrap = canvas.parentElement;
+  const maxW = wrap.clientWidth - 32;
+  const maxH = wrap.clientHeight - 32;
+  CELL = Math.max(4, Math.min(Math.floor(maxW / state.width), Math.floor(maxH / state.height)));
+  canvas.width = state.width * CELL;
+  canvas.height = state.height * CELL;
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0a0b0e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = state.connected ? '#111318' : '#0d0e11';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= state.width; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * CELL, 0);
+    ctx.lineTo(x * CELL, H);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= state.height; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * CELL);
+    ctx.lineTo(W, y * CELL);
+    ctx.stroke();
+  }
+
+  // Obstacles
+  for (const [ox, oy] of state.obstacles) {
+    ctx.fillStyle = '#252830';
+    ctx.fillRect(ox * CELL, oy * CELL, CELL, CELL);
+    // inner bevel — top/left lighter, bottom/right darker
+    ctx.fillStyle = '#2e3140';
+    ctx.fillRect(ox * CELL, oy * CELL, CELL, 1);
+    ctx.fillRect(ox * CELL, oy * CELL, 1, CELL);
+    ctx.fillStyle = '#181a22';
+    ctx.fillRect(ox * CELL, oy * CELL + CELL - 1, CELL, 1);
+    ctx.fillRect(ox * CELL + CELL - 1, oy * CELL, 1, CELL);
+  }
+
+  // Resources — glowing diamonds, color/size by value tier
+  const TIER = {
+    1: { rgb: [52, 211, 153],  hex: '#34d399', bright: '#6ee7b7', label: null },      // Common — green
+    3: { rgb: [129, 140, 248], hex: '#818cf8', bright: '#a5b4fc', label: 'x3' },      // Rare — purple
+    5: { rgb: [245, 158, 11],  hex: '#f59e0b', bright: '#fbbf24', label: 'x5' },      // Epic — gold
+  };
+
+  const now = performance.now();
+  for (const [id, rx, ry, expiresAt, value] of state.resources) {
+    const tier = TIER[value] || TIER[1];
+    const [tr, tg, tb] = tier.rgb;
+    const cx = rx * CELL + CELL / 2;
+    const cy = ry * CELL + CELL / 2;
+    const speed = value >= 5 ? 250 : value >= 3 ? 320 : 400;
+    const pulse = 0.7 + 0.3 * Math.sin(now / speed + rx * 3 + ry * 7);
+    const sizeBoost = value >= 5 ? 1.3 : value >= 3 ? 1.15 : 1.0;
+    const r = (CELL / 2 - 2) * pulse * sizeBoost;
+
+    // Outer glow — bigger and brighter for rarer tiers
+    const glowR = CELL * (1.0 + value * 0.15);
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    glow.addColorStop(0, `rgba(${tr}, ${tg}, ${tb}, ${0.12 + value * 0.03})`);
+    glow.addColorStop(1, `rgba(${tr}, ${tg}, ${tb}, 0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+
+    // Diamond shape
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = `rgba(${tr}, ${tg}, ${tb}, ${0.6 + 0.4 * pulse})`;
+    ctx.fillRect(-r / 1.4, -r / 1.4, r / 0.7, r / 0.7);
+    ctx.restore();
+
+    // Center bright dot
+    ctx.fillStyle = tier.bright;
+    ctx.beginPath();
+    ctx.arc(cx, cy, value >= 3 ? 2 : 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Value label for rare/epic
+    if (tier.label && CELL >= 8) {
+      ctx.fillStyle = tier.bright;
+      ctx.font = `bold ${Math.max(7, CELL * 0.5)}px 'JetBrains Mono'`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(tier.label, cx, cy - r - 1);
+    }
+  }
+
+  // Agents
+  const t = Math.min(1, state.lerpT);
+  for (const [id, name, team, score, tx, ty] of state.agents) {
+    const prev = state.prevAgentPos[id] || { x: tx, y: ty };
+    const px = lerp(prev.x, tx, t) * CELL + CELL / 2;
+    const py = lerp(prev.y, ty, t) * CELL + CELL / 2;
+    const col = teamColor(team);
+    const r = CELL / 2 - 1.5;
+
+    // Agent glow
+    const agGlow = ctx.createRadialGradient(px, py, 0, px, py, CELL * 1.5);
+    agGlow.addColorStop(0, col + '33');
+    agGlow.addColorStop(1, col + '00');
+    ctx.fillStyle = agGlow;
+    ctx.fillRect(px - CELL * 1.5, py - CELL * 1.5, CELL * 3, CELL * 3);
+
+    // Body circle
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath();
+    ctx.arc(px - r * 0.25, py - r * 0.3, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mining indicator — spinning ring
+    if (state.mining.has(id)) {
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(now / 300);
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 3, 0, Math.PI * 1.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Name label
+    if (CELL >= 8) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(7, CELL * 0.6)}px 'JetBrains Mono'`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(name.slice(0, 6), px, py + r + 2);
+    }
+
+    // Score badge
+    if (score > 0 && CELL >= 8) {
+      const badgeX = px + r + 2;
+      const badgeY = py - r - 2;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 6px JetBrains Mono';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(score, badgeX, badgeY);
+    }
+  }
+
+  // Particles
+  for (let i = state.particles.length - 1; i >= 0; i--) {
+    const p = state.particles[i];
+    p.life -= 0.02;
+    if (p.life <= 0) { state.particles.splice(i, 1); continue; }
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.03;
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(draw);
+}
+
+function spawnParticles(gx, gy, color, count) {
+  const cx = gx * CELL + CELL / 2;
+  const cy = gy * CELL + CELL / 2;
+  for (let i = 0; i < count; i++) {
+    state.particles.push({
+      x: cx, y: cy,
+      vx: (Math.random() - 0.5) * 3,
+      vy: (Math.random() - 0.5) * 3 - 1,
+      life: 0.6 + Math.random() * 0.4,
+      color,
+    });
+  }
+}
+
+// ─── UI Updates ───────────────────────────────────────────────────────────────
+function updateScoreboard() {
+  const teams = {};
+  for (const [id, name, team, score] of state.agents) {
+    teams[team] = (teams[team] || 0) + score;
+  }
+  const sorted = Object.entries(teams).sort((a, b) => b[1] - a[1]);
+  const el = document.getElementById('scoreList');
+  if (sorted.length === 0) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">Waiting for players...</span>'; return; }
+  el.innerHTML = sorted.map(([team, score]) => {
+    const col = teamColor(team);
+    const pct = state.goal > 0 ? Math.min(100, (score / state.goal) * 100) : 0;
+    return `<div class="team-row">
+      <div class="team-color" style="background:${col}"></div>
+      <div style="flex:1">
+        <div class="team-name">${esc(team)}</div>
+        <div class="score-bar-wrap"><div class="score-bar" style="width:${pct}%;background:${col}"></div></div>
+      </div>
+      <div class="team-score">${score}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateAgentList() {
+  const el = document.getElementById('agentList');
+  el.innerHTML = state.agents.map(([id, name, team, score, x, y]) => {
+    const col = teamColor(team);
+    const isMining = state.mining.has(id);
+    return `<div class="agent-row">
+      <div class="agent-dot" style="background:${col}${isMining ? ';box-shadow:0 0 6px ' + col : ''}"></div>
+      <div class="agent-name">${esc(name)}</div>
+      ${isMining ? '<div class="agent-mining">MINING</div>' : ''}
+      <div class="agent-pos">(${x},${y})</div>
+    </div>`;
+  }).join('');
+}
+
+function addLog(tag, tagClass, text) {
+  const el = document.getElementById('logEntries');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `<span class="log-tag ${tagClass}">[${tag}]</span>${esc(text)}`;
+  el.prepend(div);
+  // Keep max 80 entries
+  while (el.children.length > 80) el.removeChild(el.lastChild);
+}
+
+function esc(s) { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; }
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+let ws;
+let reconnectTimer;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    state.connected = true;
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = 'live';
+    document.getElementById('connectOverlay').classList.add('hidden');
+    addLog('SYS', 'join', 'Connected to arena server');
+  };
+
+  ws.onclose = () => {
+    state.connected = false;
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'offline';
+    addLog('SYS', 'win', 'Disconnected — reconnecting...');
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+
+    switch (msg.type) {
+      case 'Hello':
+        addLog('SYS', 'join', `Assigned spectator id ${msg.data.agent_id.slice(0, 8)}…`);
+        break;
+
+      case 'State': {
+        const d = msg.data;
+        state.tick = d.tick;
+        state.width = d.width;
+        state.height = d.height;
+        state.goal = d.goal;
+        state.obstacles = d.obstacles;
+
+        // Detect new resources by diffing with known set
+        const TIER_LABEL = { 1: '', 3: 'RARE ', 5: 'EPIC ' };
+        const newIds = new Set(d.resources.map(r => r[0]));
+        for (const [id, x, y, expiresAt, value] of d.resources) {
+          if (!state.knownResourceIds.has(id)) {
+            const v = value || 1;
+            const rarity = TIER_LABEL[v] || '';
+            addLog('NEW', 'mine', `${rarity}Resource at (${x},${y}) — ${v} pt${v > 1 ? 's' : ''}`);
+          }
+        }
+        state.knownResourceIds = newIds;
+        state.resources = d.resources;
+
+        // Lerp setup — save previous positions
+        for (const [id, name, team, score, x, y] of d.agents) {
+          const prev = state.targetAgentPos[id];
+          if (prev && (prev.x !== x || prev.y !== y)) {
+            state.prevAgentPos[id] = { x: prev.x, y: prev.y };
+          } else if (!state.prevAgentPos[id]) {
+            state.prevAgentPos[id] = { x, y };
+          }
+          state.targetAgentPos[id] = { x, y };
+        }
+        state.agents = d.agents;
+        state.lerpT = 0;
+
+        // UI
+        document.getElementById('tickVal').textContent = d.tick;
+        document.getElementById('goalVal').textContent = d.goal;
+        document.getElementById('mapVal').textContent = `${d.width}×${d.height}`;
+        resizeCanvas();
+        updateScoreboard();
+        updateAgentList();
+        break;
+      }
+
+      case 'PowChallenge': {
+        const d = msg.data;
+        const v = d.value || 1;
+        const rarity = v >= 5 ? 'EPIC' : v >= 3 ? 'RARE' : '';
+        addLog('NEW', 'mine', `${rarity ? rarity + ' ' : ''}Resource at (${d.x},${d.y}) — ${d.target_bits} bits, ${v} pt${v > 1 ? 's' : ''}`);
+        break;
+      }
+
+      case 'PowResult': {
+        const d = msg.data;
+        // Find winner name
+        const winner = state.agents.find(a => a[0] === d.winner);
+        const wName = winner ? winner[1] : d.winner.slice(0, 8);
+        const wTeam = winner ? winner[2] : '?';
+        addLog('POW', 'pow', `${wName} (${wTeam}) mined ${d.resource_id.slice(0, 8)}…`);
+        // Find resource position for particles
+        const res = state.resources.find(r => r[0] === d.resource_id);
+        if (res) spawnParticles(res[1], res[2], teamColor(wTeam), 18);
+        break;
+      }
+
+      case 'Mining': {
+        const d = msg.data;
+        if (d.on) {
+          state.mining.set(d.agent_id, d.resource_id);
+        } else {
+          state.mining.delete(d.agent_id);
+        }
+        updateAgentList();
+        break;
+      }
+
+      case 'Win': {
+        const team = msg.data.team;
+        addLog('WIN', 'win', `Team "${team}" wins!`);
+        document.getElementById('winTeam').textContent = team;
+        document.getElementById('winTeam').style.color = teamColor(team);
+        document.getElementById('winOverlay').classList.add('show');
+        break;
+      }
+
+      case 'Reset':
+        state.resources = [];
+        state.mining.clear();
+        state.particles = [];
+        state.knownResourceIds.clear();
+        document.getElementById('winOverlay').classList.remove('show');
+        addLog('SYS', 'join', 'Game has been reset');
+        break;
+
+      case 'Error':
+        addLog('ERR', 'win', msg.data.message);
+        break;
+    }
+  };
+}
+
+// Lerp timer — advance interpolation
+setInterval(() => {
+  state.lerpT = Math.min(1, state.lerpT + 0.15);
+  if (state.lerpT >= 1) {
+    // Snap previous to target
+    for (const id in state.targetAgentPos) {
+      state.prevAgentPos[id] = { ...state.targetAgentPos[id] };
+    }
+  }
+}, 16);
+
+function resetGame() {
+  fetch('/reset', { method: 'POST' }).then(() => {
+    addLog('SYS', 'join', 'Game reset requested');
+  });
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+resizeCanvas();
+requestAnimationFrame(draw);
+connect();
+</script>
+</body>
+</html>
