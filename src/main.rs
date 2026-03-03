@@ -23,9 +23,9 @@ use protocol::{ClientMsg, ServerMsg};
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const SERVER_URL: &str = "ws://127.0.0.1:4000/ws";
-const TEAM_NAME: &str = "mon_equipe";
-const AGENT_NAME: &str = "bot_1";
+const SERVER_URL: &str = "wss://respond-comm-moscow-libs.trycloudflare.com/ws";
+const TEAM_NAME: &str = "Equipe Ahmed";
+const AGENT_NAME: &str = "Agent Ahmed";
 const NUM_MINERS: usize = 4;
 
 fn main() {
