@@ -1,24 +1,4 @@
 // ─── Partie 2 : Pool de mineurs ──────────────────────────────────────────────
-//
-// Objectif : créer un pool de N threads qui cherchent des nonces en parallèle.
-//
-// Concepts exercés : thread::spawn, mpsc::channel, Arc, move closures.
-//
-// Architecture :
-//
-//   Thread principal                        Threads mineurs (x N)
-//        |                                        |
-//        |── mpsc::Sender<MineRequest> ──────────>|  (challenges à résoudre)
-//        |                                        |
-//        |<── mpsc::Sender<MineResult> ──────────>|  (solutions trouvées)
-//        |                                        |
-//
-// Chaque thread mineur :
-//   1. Attend un MineRequest sur son channel
-//   2. Appelle pow::pow_search() avec un start_nonce différent
-//   3. Si un nonce est trouvé, envoie un MineResult
-//
-// ─────────────────────────────────────────────────────────────────────────────
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -45,98 +25,95 @@ pub struct MineResult {
     pub nonce: u64,
 }
 
-// TODO: Définir la structure MinerPool.
-//
-// Elle doit contenir :
-//   - Le Sender pour envoyer des MineRequest aux threads
-//   - Le Receiver pour récupérer les MineResult
-//
-// Indice : les types sont :
-//   std::sync::mpsc::Sender<MineRequest>
-//   std::sync::mpsc::Receiver<MineResult>
-//
 pub struct MinerPool {
     pub sender: std::sync::mpsc::Sender<MineRequest>,
     pub receiver: std::sync::mpsc::Receiver<MineResult>,
+    /// IDs des ressources actuellement annulées (déjà résolues ou expirées).
+    cancelled: Arc<Mutex<std::collections::HashSet<Uuid>>>,
 }
 
-// TODO: Implémenter MinerPool.
-//
 impl MinerPool {
     /// Crée un pool de `n` threads mineurs.
     ///
-    /// Chaque thread :
-    ///   1. Possède un Receiver<MineRequest> (partagé via Arc<Mutex<>>)
-    ///   2. Possède un Sender<MineResult> (cloné pour chaque thread)
-    ///   3. Boucle : recv() → pow_search() → send() si trouvé
-    ///
-    /// Indices :
-    ///   - Un seul Receiver existe par channel. Pour le partager entre N threads,
-    ///     il faut le wrapper dans Arc<Mutex<Receiver<MineRequest>>>.
-    ///   - Chaque thread clone le Arc pour accéder au Receiver.
-    ///   - pow::pow_search() prend un start_nonce et un batch_size.
-    ///     Utilisez rand::random::<u64>() comme start_nonce pour que chaque
-    ///     appel explore une zone différente.
-    ///   - Batch size recommandé : 100_000
-    ///
+    /// Correction clé : le verrou sur le Receiver est relâché AVANT d'appeler
+    /// pow_search(), pour que les autres threads puissent recevoir de nouveaux
+    /// challenges pendant qu'un thread mine.
     pub fn new(n: usize) -> Self {
-        // Créer les 2 channels :
-        //   - (request_tx, request_rx) pour envoyer les challenges
-        //   - (result_tx, result_rx) pour recevoir les solutions
         let (request_tx, request_rx) = std::sync::mpsc::channel::<MineRequest>();
         let (result_tx, result_rx) = std::sync::mpsc::channel::<MineResult>();
 
         let shared_rx = Arc::new(Mutex::new(request_rx));
+        let cancelled: Arc<Mutex<std::collections::HashSet<Uuid>>> =
+            Arc::new(Mutex::new(std::collections::HashSet::new()));
 
-        // Wrapper request_rx dans Arc<Mutex<>>
-        //
-        // Pour chaque thread (0..n) :
-        //   - Cloner le Arc<Mutex<Receiver<MineRequest>>>
-        //   - Cloner le result_tx
-        //   - thread::spawn(move || { ... boucle de minage ... })
-        //
         for _ in 0..n {
-        let rx = Arc::clone(&shared_rx); // chaque thread a son pointeur
-        let tx = result_tx.clone();         // chaque thread a son Sender
+            let rx = Arc::clone(&shared_rx);
+            let tx = result_tx.clone();
+            let cancelled = Arc::clone(&cancelled);
 
             thread::spawn(move || {
                 loop {
-                    // a) récupérer un challenge (bloquant)
-                    let request = rx.lock().unwrap().recv().unwrap();
-                    loop{
+                    // ── a) Récupérer un challenge (bloquant) ───────────────
+                    // IMPORTANT : on relâche le verrou immédiatement après recv()
+                    // pour ne pas bloquer les autres threads pendant le minage.
+                    let request = match rx.lock().unwrap().recv() {
+                        Ok(r) => r,
+                        Err(_) => break, // channel fermé → fin du thread
+                    };
+                    // verrou relâché ici ↑
 
-                        // b) chercher un nonce 
-                        let miner_search = pow::pow_search(
+                    // ── b) Chercher le nonce par batches ───────────────────
+                    loop {
+                        // Vérifier si cette ressource a été annulée
+                        if cancelled.lock().unwrap().contains(&request.resource_id) {
+                            break;
+                        }
+
+                        let start_nonce = rand::random::<u64>();
+                        let found = pow::pow_search(
                             &request.seed,
                             request.tick,
                             request.resource_id,
                             request.agent_id,
                             request.target_bits,
-                            rand::random::<u64>(),   
-                            100_000,       
+                            start_nonce,
+                            100_000,
                         );
-                        //nonce trouvé → envoyer le résultat
-                        if let Some(nonce) = miner_search {
-                            tx.send(MineResult {
+
+                        if let Some(nonce) = found {
+                            // Annuler les autres threads qui minent la même ressource
+                            cancelled.lock().unwrap().insert(request.resource_id);
+                            // Envoyer le résultat (ignorer l'erreur si le channel est fermé)
+                            let _ = tx.send(MineResult {
                                 tick: request.tick,
-                                resource_id: request.resource_id,  
-                                nonce,                              
-                            }).unwrap();
+                                resource_id: request.resource_id,
+                                nonce,
+                            });
                             break;
                         }
                     }
                 }
             });
-        };
+        }
 
-        // 4. Retourner le pool
-        return MinerPool { sender: request_tx, receiver: result_rx };
-
+        MinerPool {
+            sender: request_tx,
+            receiver: result_rx,
+            cancelled,
+        }
     }
 
     /// Envoie un challenge de minage au pool.
     pub fn submit(&self, request: MineRequest) {
+        // Retirer de la liste des annulations au cas où cette ressource
+        // aurait été annulée lors d'un tick précédent.
+        self.cancelled.lock().unwrap().remove(&request.resource_id);
         self.sender.send(request).unwrap();
+    }
+
+    /// Annule le minage d'une ressource (ex : PowResult reçu, quelqu'un d'autre a gagné).
+    pub fn cancel(&self, resource_id: Uuid) {
+        self.cancelled.lock().unwrap().insert(resource_id);
     }
 
     /// Tente de récupérer un résultat sans bloquer.

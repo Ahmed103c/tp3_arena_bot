@@ -1,13 +1,3 @@
-// ─── Partie 1 : État partagé ─────────────────────────────────────────────────
-//
-// Objectif : définir un GameState protégé par Arc<Mutex<>> pour être partagé
-// entre le thread lecteur WS et le thread principal.
-//
-// Concepts exercés : Arc, Mutex, struct, closures.
-//
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Ces imports seront utilisés dans votre implémentation.
 #[allow(unused_imports)]
 use std::collections::HashMap;
 #[allow(unused_imports)]
@@ -18,7 +8,6 @@ use uuid::Uuid;
 #[allow(unused_imports)]
 use crate::protocol::ServerMsg;
 
-/// Information sur une ressource (challenge de minage) active sur la carte.
 #[derive(Debug, Clone)]
 pub struct ResourceInfo {
     pub resource_id: Uuid,
@@ -28,7 +17,6 @@ pub struct ResourceInfo {
     pub value: u32,
 }
 
-/// Information sur un agent visible sur la carte.
 #[derive(Debug, Clone)]
 pub struct AgentInfo {
     pub id: Uuid,
@@ -39,19 +27,6 @@ pub struct AgentInfo {
     pub y: u16,
 }
 
-// TODO: Définir la structure GameState.
-//
-// Elle doit contenir au minimum :
-//   - agent_id: Uuid           → votre identifiant (reçu dans Hello)
-//   - tick: u64                → tick courant du serveur
-//   - position: (u16, u16)    → votre position (x, y)
-//   - map_size: (u16, u16)    → dimensions de la carte (width, height)
-//   - goal: u32               → score objectif
-//   - obstacles: Vec<(u16, u16)>
-//   - resources: Vec<ResourceInfo>
-//   - agents: Vec<AgentInfo>
-//   - team_scores: HashMap<String, u32>
-//
 pub struct GameState {
     pub agent_id: Uuid,
     pub tick: u64,
@@ -61,13 +36,10 @@ pub struct GameState {
     pub obstacles: Vec<(u16, u16)>,
     pub resources: Vec<ResourceInfo>,
     pub agents: Vec<AgentInfo>,
-    pub team_scores: HashMap<String, u32>
+    pub team_scores: HashMap<String, u32>,
 }
 
-// TODO: Implémenter GameState.
-//
 impl GameState {
-    /// Crée un état initial avec l'agent_id reçu du serveur.
     pub fn new(agent_id: Uuid) -> Self {
         GameState {
             agent_id,
@@ -82,14 +54,6 @@ impl GameState {
         }
     }
 
-    /// Met à jour l'état à partir d'un message serveur.
-    ///
-    /// Doit gérer au minimum :
-    ///   - ServerMsg::State { .. } → mettre à jour tick, position, resources, agents, etc.
-    ///     Indice : votre position est dans la liste `agents`, trouvez-la par agent_id.
-    ///   - ServerMsg::PowResult { resource_id, .. } → retirer la ressource de la liste.
-    ///
-    /// Les autres messages peuvent être ignorés ici.
     pub fn update(&mut self, msg: &ServerMsg) {
         match msg {
             ServerMsg::State { tick, width, height, goal, obstacles, resources, agents } => {
@@ -109,7 +73,7 @@ impl GameState {
                 }).collect();
 
                 self.agents = agents.iter().map(|(id, name, team, score, x, y)| {
-                    AgentInfo { 
+                    AgentInfo {
                         id: *id,
                         name: name.clone(),
                         team: team.clone(),
@@ -119,33 +83,53 @@ impl GameState {
                     }
                 }).collect();
 
-                //trouver la position de mon agent dans self.agents par agent_id
+                // Mettre à jour les scores par équipe
+                self.team_scores.clear();
+                for agent in &self.agents {
+                    let entry = self.team_scores.entry(agent.team.clone()).or_insert(0);
+                    // on garde le max (plusieurs agents même équipe possible)
+                    if agent.score > *entry {
+                        *entry = agent.score;
+                    }
+                }
+
                 if let Some(me) = self.agents.iter().find(|a| a.id == self.agent_id) {
                     self.position = (me.x, me.y);
                 }
             }
 
             ServerMsg::PowResult { resource_id, .. } => {
-                // .. = ignorer winner
                 self.resources.retain(|r| r.resource_id != *resource_id);
             }
 
-            _ => {} // ignorer les autres messages
-
+            _ => {}
         }
-
     }
 
+    /// Vérifie si une case (x, y) est bloquée (obstacle ou agent autre que soi-même).
+    pub fn is_blocked(&self, x: u16, y: u16) -> bool {
+        // Hors carte
+        if x >= self.map_size.0 || y >= self.map_size.1 {
+            return true;
+        }
+        // Obstacle statique
+        if self.obstacles.contains(&(x, y)) {
+            return true;
+        }
+        // Autre agent sur la case
+        if self.agents.iter().any(|a| a.id != self.agent_id && a.x == x && a.y == y) {
+            return true;
+        }
+        // Ressource sur la case (le README dit que le mouvement est bloqué par les ressources aussi)
+        if self.resources.iter().any(|r| r.x == x && r.y == y) {
+            return true;
+        }
+        false
+    }
 }
 
-// TODO: Définir le type alias SharedState.
-//
-// C'est un Arc<Mutex<GameState>> pour pouvoir le partager entre threads.
-//
 pub type SharedState = Arc<Mutex<GameState>>;
-//
-// Ajoutez une fonction de construction pratique :
-//
+
 pub fn new_shared_state(agent_id: Uuid) -> SharedState {
     Arc::new(Mutex::new(GameState::new(agent_id)))
 }
