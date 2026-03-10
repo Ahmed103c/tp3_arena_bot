@@ -21,11 +21,12 @@ use uuid::Uuid;
 
 use protocol::{ClientMsg, ServerMsg};
 
+
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const SERVER_URL: &str = "ws://127.0.0.1:4004/ws";
-const TEAM_NAME: &str = "mon_equipe";
-const AGENT_NAME: &str = "bot_1";
+const TEAM_NAME: &str = "Equipe AhMed";
+const AGENT_NAME: &str = "Agent AhMed 007";
 const NUM_MINERS: usize = 4;
 
 fn main() {
@@ -92,40 +93,80 @@ fn main() {
     // ─────────────────────────────────────────────────────────────────────
 
     // TODO: Partie 1 — Créer le SharedState (voir state.rs)
-
+    let shared_state = state::new_shared_state(agent_id);
     // TODO: Partie 2 — Créer le MinerPool (voir miner.rs)
-
+    let miner_pool = miner::MinerPool::new(NUM_MINERS);
     // TODO: Partie 3 — Créer la stratégie (voir strategy.rs)
-
+    let strategy: Box<dyn strategy::Strategy> = Box::new(strategy::NearestResourceStrategy);
     // TODO: Partie 4 — Lancer le thread lecteur WS
     //
     // Indice : il faut un channel pour recevoir les messages du thread lecteur
     // car la WebSocket ne peut pas être partagée entre threads.
     //
-    // let (tx, rx) = std::sync::mpsc::channel::<ServerMsg>();
+    let (tx, rx) = std::sync::mpsc::channel::<ServerMsg>();
     //
     // Le thread lecteur lit les messages, met à jour le state, et forward
     // les messages importants via le channel.
-
-    // TODO: Partie 5 — Boucle principale
     //
-    // loop {
+    match ws.get_mut() {
+        tungstenite::stream::MaybeTlsStream::Plain(tcp) => {
+            tcp.set_nonblocking(true).expect("set_nonblocking failed");
+        }
+        tungstenite::stream::MaybeTlsStream::Rustls(tls) => {
+            tls.get_ref().set_nonblocking(true).expect("set_nonblocking failed");
+        }
+        _ => panic!("stream TLS non supporté"),
+    }
+    
+    // TODO: Partie 5 — Boucle principale
+    loop {
     //     // 1. Lire les messages du thread lecteur (rx.try_recv())
     //     //    - PowChallenge → envoyer au MinerPool
     //     //    - Win → afficher et quitter
     //     //    - Autres → déjà traités par le thread lecteur
-    //
-    //     // 2. Vérifier si le MinerPool a trouvé un nonce
-    //     //    → envoyer ClientMsg::PowSubmit
-    //
-    //     // 3. Consulter la stratégie pour le prochain mouvement
-    //     //    → envoyer ClientMsg::Move
-    //
-    //     // 4. Dormir un peu
-    //     thread::sleep(Duration::from_millis(50));
-    // }
+        // 1. Lire UN message WS (non bloquant)
+        match ws.read() {
+            Ok(Message::Text(text)) => {
+                if let Ok(msg) = serde_json::from_str::<ServerMsg>(&text) {
+                    shared_state.lock().unwrap().update(&msg);
+                    match msg {
+                        ServerMsg::PowChallenge { tick, seed, resource_id, target_bits, .. } => {
+                            // → envoyer au miner_pool
+                            // miner_pool.submit(miner::MineRequest { ... })
+                            miner_pool.submit(miner::MineRequest { seed, tick, resource_id, agent_id, target_bits });
+                        }
+                        ServerMsg::Win { team } => {
+                            println!("Victoire de {team} !");
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Err(tungstenite::Error::Io(ref e))
+                if e.kind() == std::io::ErrorKind::WouldBlock => {} // pas de message, on continue
+            _ => {}
+        }
+        // 2. Vérifier si le MinerPool a trouvé un nonce → envoyer ClientMsg::PowSubmit
+        if let Some(result) = miner_pool.try_recv(){
+            send_client_msg(&mut ws, &ClientMsg::PowSubmit { tick: result.tick, resource_id: result.resource_id, nonce: result.nonce });
+        }
+        // 3. Consulter la stratégie pour le prochain mouvement → envoyer ClientMsg::Move 
+        // lire le state pour décider
+        let movement = {
+            let state = shared_state.lock().unwrap();
+            strategy.next_move(&state)
+        }; // ← le verrou est relâché ici
 
-    println!("[!] TODO: implémenter la boucle principale");
+        // envoyer le Move
+        if let Some((dx, dy)) = movement {
+            send_client_msg(&mut ws, &ClientMsg::Move { dx, dy });
+        }
+
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    
 }
 
 // ─── Fonctions utilitaires (fournies) ───────────────────────────────────────
