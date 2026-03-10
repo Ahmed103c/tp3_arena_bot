@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TODO: Importer les types nécessaires de state.rs
-// use crate::state::GameState;
+use crate::state::GameState;
 
 // TODO: Définir le trait Strategy.
 //
@@ -17,38 +17,37 @@
 //   - Être Send (pour pouvoir être utilisé dans un contexte multi-thread)
 //   - Avoir une méthode next_move qui retourne un déplacement optionnel
 //
-// pub trait Strategy: Send {
-//     /// Décide du prochain mouvement en fonction de l'état du jeu.
-//     ///
-//     /// Retourne Some((dx, dy)) avec dx, dy ∈ {-1, 0, 1}, ou None pour rester sur place.
-//     fn next_move(&self, state: &GameState) -> Option<(i8, i8)>;
-// }
+pub trait Strategy: Send {
+    /// Décide du prochain mouvement en fonction de l'état du jeu.
+    ///
+    /// Retourne Some((dx, dy)) avec dx, dy ∈ {-1, 0, 1}, ou None pour rester sur place.
+    fn next_move(&self, state: &GameState) -> Option<(i8, i8)>;
+}
 
 // TODO: Implémenter NearestResourceStrategy.
 //
 // Cette stratégie se dirige vers la ressource la plus proche (distance de Manhattan).
 //
-// pub struct NearestResourceStrategy;
+pub struct NearestResourceStrategy;
 //
-// impl Strategy for NearestResourceStrategy {
-//     fn next_move(&self, state: &GameState) -> Option<(i8, i8)> {
-//         // 1. Trouver la ressource la plus proche en distance de Manhattan :
-//         //    distance = |resource.x - position.x| + |resource.y - position.y|
-//         //
-//         //    Indice : utilisez .iter().min_by_key(|r| ...)
-//         //
-//         // 2. Calculer la direction (dx, dy) vers cette ressource :
-//         //    - Si resource.x > position.x → dx = 1
-//         //    - Si resource.x < position.x → dx = -1
-//         //    - Sinon dx = 0
-//         //    - Idem pour dy
-//         //
-//         //    Indice : utilisez i16 pour les calculs puis .signum() puis cast en i8
-//         //
-//         // 3. Retourner Some((dx, dy)), ou None si aucune ressource
-//         todo!()
-//     }
-// }
+impl Strategy for NearestResourceStrategy {
+    fn next_move(&self, state: &GameState) -> Option<(i8, i8)> {
+        
+        // min_by_key retourne Option → ? gère le cas None
+        let nearest = state.resources.iter().min_by_key(|r| {
+            (r.x as i32 - state.position.0 as i32).abs() +
+            (r.y as i32 - state.position.1 as i32).abs()
+        })?;
+
+        // nearest.x - position.x donne la direction
+        // signum() réduit ça à -1, 0 ou 1
+        // as i8 convertit le type
+        let dx = (nearest.x as i16 - state.position.0 as i16).signum() as i8;
+        let dy = (nearest.y as i16 - state.position.1 as i16).signum() as i8;
+
+        Some((dx, dy))
+    }
+}
 
 // ─── BONUS : Implémenter d'autres stratégies ────────────────────────────────
 //
